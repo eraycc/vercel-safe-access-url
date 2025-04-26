@@ -1,15 +1,37 @@
 const { createProxyMiddleware } = require("http-proxy-middleware");
 
-// 从环境变量中读取密码
+// 从环境变量中读取密码和安全路径
 const PASSWORD = process.env.NEXT_PUBLIC_SAFEPWD;
+const SAFE_PATH = process.env.NEXT_PUBLIC_SAFEPATH || '/safe-api'; // 默认安全路径为/safe-api
 
 module.exports = (req, res) => {
-  // 检查是否存在 safepwd cookie 并且值等于设置的密码
+  // 检查请求路径是否以安全路径开头
+  if (req.url.startsWith(SAFE_PATH)) {
+    // 提取目标URL
+    const targetUrl = req.url.slice(SAFE_PATH.length);
+    
+    // 验证目标URL是否以http://或https://开头
+    if (targetUrl.startsWith('http://') || targetUrl.startsWith('https://')) {
+      // 执行代理逻辑，直接转发到目标URL
+      createProxyMiddleware({
+        target: targetUrl,
+        changeOrigin: true,
+        pathRewrite: {
+          [`^${SAFE_PATH}`]: '', // 移除安全路径前缀
+        },
+      })(req, res);
+      return;
+    } else {
+      res.status(400).send('Invalid target URL');
+      return;
+    }
+  }
+
+  // 如果不是安全路径请求，继续原有的密码验证逻辑
   const safepwd = req.cookies.safepwd;
   if (safepwd === PASSWORD) {
     // 如果密码正确，移除 safepwd cookie 后再转发请求
     if (req.headers.cookie) {
-      // 从 cookie 中移除 safepwd
       req.headers.cookie = req.headers.cookie
         .split(';')
         .map(cookie => cookie.trim())
